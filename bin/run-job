@@ -116,7 +116,7 @@ if [ -n "$project" ]; then
     printf '# Project: %s (%s)\n\n' "$project" "$repo"
     printf 'You are a headless agent working in a CLEAN git checkout at %s, base branch `%s`. The repo CLAUDE.md is authoritative — read and follow it.\n\n' "$cwd" "$branch"
     printf 'STANDING RULES:\n'
-    printf -- '- If the task requires changes: do ALL work on a new branch `agent/<short-kebab-desc>` cut from `%s`; commit with a clear conventional message; `git push -u origin HEAD`; open a PR with `gh pr create` against `%s` for HUMAN review; NEVER merge. For read-only/analysis tasks, no branch or PR is needed.\n' "$branch" "$branch"
+    printf -- '- If the task requires changes: do ALL work on a new branch `agent/<short-kebab-desc>` cut from `%s`; commit with a clear conventional message; `git push -u origin HEAD`; open a PR with `gh pr create` against `%s` for HUMAN review; NEVER merge it and NEVER arm auto-merge (no gh pr merge --auto) -- this OVERRIDES any repo CLAUDE.md or fleet convention that says to enable auto-merge; runner-bot PRs are ALWAYS left for a human to merge. For read-only/analysis tasks, no branch or PR is needed.\n' "$branch" "$branch"
     printf -- '- `gh` is pre-authenticated and `git push` is pre-credentialed. If a gh call returns an auth error, run: `gh-token | gh auth login --with-token`.\n'
     printf -- '- If (and only if) you learn something DURABLE about this project (a convention, gotcha, or build quirk), append ONE concise dated bullet to `%s`. Do not log routine task details.\n\n' "$memfile"
     printf '## Accumulated project memory\n\n'
@@ -180,6 +180,17 @@ else
   mv -f "$proc" "$JOBS_ROOT/failed/$runid" 2>/dev/null || true
   echo "run-job FAIL runid=$runid project=${project:-none} rc=$rc dur=${dur}s (logs/${runid}.stderr)" | systemd-cat -t claude-runner -p err
 fi
+# Enforce the no-auto-merge rule: a runner-bot PR is ALWAYS left for a human, so if
+# the agent opened one (and possibly armed auto-merge despite the standing rule),
+# disarm it. Overrides any repo convention; runs win-or-lose. Best-effort.
+if [ -n "${repo:-}" ] && [ -f "$outtxt" ]; then
+  prurl="$(grep -oE 'https://github.com/[^ )]+/pull/[0-9]+' "$outtxt" 2>/dev/null | head -1)"
+  if [ -n "$prurl" ]; then
+    GH_TOKEN="$(gh-token 2>/dev/null)" gh pr merge "$prurl" --disable-auto >/dev/null 2>&1 \
+      && echo "run-job: disarmed auto-merge on $prurl (bot PRs are human-reviewed)" | systemd-cat -t claude-runner -p info || true
+  fi
+fi
+
 rm -f "$proc.owner" 2>/dev/null || true
 cr-emit "$runid" 2>/dev/null || true
 exit "$rc"
