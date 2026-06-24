@@ -1,0 +1,164 @@
+{
+  "id": "bullpenSubmitForm1",
+  "name": "Bullpen \u2014 Submit a Job",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "form-trigger",
+      "name": "Submit a Bullpen Job",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "bullpen",
+      "parameters": {
+        "path": "bullpen",
+        "formTitle": "Submit a Bullpen Job",
+        "formDescription": "Dispatch a task to the Claude runner fleet. Pick a project (or ad-hoc), choose a model, describe the task. The job is dropped on the NAS queue and any idle worker picks it up in a clean checkout and opens a PR for your review.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Project",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "(ad-hoc \u2014 no repo)"
+                  },
+                  {
+                    "option": "ice-cream-book"
+                  },
+                  {
+                    "option": "homelab-observability"
+                  },
+                  {
+                    "option": "homeassistant-config"
+                  },
+                  {
+                    "option": "foundry-platform-demo"
+                  },
+                  {
+                    "option": "firewalla-axiom-pipeline"
+                  },
+                  {
+                    "option": "reference-checker"
+                  },
+                  {
+                    "option": "workstation-bootstrap"
+                  },
+                  {
+                    "option": "shared-workflows"
+                  },
+                  {
+                    "option": "office-presence"
+                  },
+                  {
+                    "option": "music-curator"
+                  },
+                  {
+                    "option": "repo-template"
+                  },
+                  {
+                    "option": "bullpen"
+                  },
+                  {
+                    "option": "pitzilabs-dev"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Model",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "(project default)"
+                  },
+                  {
+                    "option": "haiku"
+                  },
+                  {
+                    "option": "sonnet"
+                  },
+                  {
+                    "option": "opus"
+                  },
+                  {
+                    "option": "fable"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Task",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "What should the agent do? For a project job, describe the change and any acceptance criteria \u2014 the worker resolves repo, context and memory automatically."
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "write-job",
+      "name": "Write job to inbox",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst f = $input.first().json;\nconst project = (f['Project'] || '').toString().trim();\nconst model = (f['Model'] || '').toString().trim();\nconst task = (f['Task'] || '').toString();\nconst isAdhoc = project === '' || project.charAt(0) === '(';\nconst defModel = model === '' || model.charAt(0) === '(';\nconst p = isAdhoc ? '' : project;\nconst m = defModel ? '' : model;\nlet body, ext;\nif (p || m) {\n  const spec = { prompt: task };\n  if (p) spec.project = p;\n  if (m) spec.model = m;\n  body = JSON.stringify(spec); ext = 'json';\n} else { body = task + '\\n'; ext = 'txt'; }\nconst ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\\.\\d+Z$/, 'Z');\nconst rand = Math.floor(Math.random() * 1e6).toString();\nconst fileName = ts + '-' + (p || 'adhoc') + '-n8n-' + rand + '.' + ext;\nconst finalPath = '/srv/jobs/inbox/' + fileName;\nconst partialPath = finalPath + '.partial';\n// write-then-rename: the poller skips *.partial, then the rename atomically publishes\nfs.writeFileSync(partialPath, body);\nfs.renameSync(partialPath, finalPath);\nlet summary = 'queued: ' + finalPath;\nsummary += p ? ('  (project=' + p + ')') : '  (ad-hoc, no repo)';\nif (m) summary += ('  (model=' + m + ')');\nreturn [{ json: { summary, fileName, finalPath } }];"
+      }
+    },
+    {
+      "id": "show-result",
+      "name": "Show result",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Job queued to the bullpen \u2705",
+        "completionMessage": "={{ $json.summary }}\n\nAny of the 3 workers will pick it up (polled). Watch /srv/jobs/logs on the NAS or the Claude Runner Fleet dashboard \u2014 it'll open a PR for your review."
+      }
+    }
+  ],
+  "connections": {
+    "Submit a Bullpen Job": {
+      "main": [
+        [
+          {
+            "node": "Write job to inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write job to inbox": {
+      "main": [
+        [
+          {
+            "node": "Show result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
