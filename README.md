@@ -65,6 +65,10 @@ With `"project"`, the worker resolves the registry, prepares a clean checkout
 (warm-but-reset), auto-loads the repo `CLAUDE.md`, injects that project's memory, and
 enforces branch→PR. Without it, it's a bare prompt in the work dir.
 
+**Web form.** `frontends/n8n/` is a point-and-click submitter — an n8n workflow that
+writes the same job files to the inbox (same spec + write-then-rename, no SSH). It's
+just another producer, and works as long as the NAS is up. See its README to deploy.
+
 ## Projects (routing + context)
 
 Routing is a job field, not a separate inbox or a per-project box. The registry maps
@@ -120,6 +124,7 @@ cron/        claude-runner — scheduled jobs (re-queue saved specs)
 etc/         runner.env — non-secret config (model/cwd/turns defaults, LOKI_PUSH_URL)
 gitops/      bullpen-gitops.{sh,service,timer} + install.sh — pull main, redeploy on drift
 provision/   01..05 scripts — stand up a worker from scratch (LXC, runner, App, projects, reaper)
+frontends/   alternate producers — n8n web form to submit jobs (frontends/n8n/)
 docs/        deeper notes
 ```
 
