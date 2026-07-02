@@ -221,6 +221,26 @@ if [ "$rc" -eq 0 ]; then
 else
   mv -f "$proc" "$JOBS_ROOT/failed/$runid" 2>/dev/null || true
   echo "run-job FAIL runid=$runid project=${project:-none} rc=$rc dur=${dur}s (logs/${runid}.stderr)" | systemd-cat -t claude-runner -p err
+  # Option 1 (issue #37): comment on the originating GitHub issue so dispatchers see
+  # failures where they already look.  Strictly best-effort — suppressed errors never
+  # change the job outcome or crash this path.  Only fires for project jobs (repo is
+  # known) whose original prompt references a GitHub issue number.
+  if [ -n "${project:-}" ] && [ -n "${repo:-}" ]; then
+    _issue="$(printf '%s' "$user_prompt" \
+      | grep -oiE '(issue[[:space:]]+#|#)[0-9]+' \
+      | grep -oE '[0-9]+' | head -1)"
+    if [ -n "${_issue:-}" ]; then
+      _reason="$(tail -1 "$errlog" 2>/dev/null | head -c 500)"
+      [ -z "${_reason:-}" ] && _reason="(no stderr note)"
+      _logtail="$(tail -20 "$errlog" 2>/dev/null)"
+      _body="$(printf '## Job failed: %s\n\n**Exit code:** %s  \n**Failure reason:** %s\n\n<details>\n<summary>Last 20 lines of job log</summary>\n\n```\n%s\n```\n</details>' \
+        "$runid" "$rc" "$_reason" "$_logtail")"
+      GH_TOKEN="$(gh-token "$repo" 2>/dev/null)" \
+        gh api "repos/$repo/issues/$_issue/comments" \
+        -f body="$_body" >/dev/null 2>&1 || true
+      unset _issue _reason _logtail _body
+    fi
+  fi
 fi
 # Enforce the no-auto-merge rule: a runner-bot PR is ALWAYS left for a human, so if
 # the agent opened one (and possibly armed auto-merge despite the standing rule),
