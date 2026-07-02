@@ -143,6 +143,25 @@ See `provision/README.md`. In short: create an unprivileged LXC, bind-mount the 
 `gitops/install.sh`. Additional workers are a `pct clone` (detach/re-attach the bind
 mount) with a fresh IP + hostname.
 
+## Failure handling
+
+When a job exits non-zero it lands in `failed/<runid>` and the worker logs a `run-job
+FAIL` line to journald. The stderr note (if any) and the exit code are in
+`logs/<runid>.stderr`.
+
+**Issue comments (Option 1 of #37):** for project jobs whose prompt references a GitHub
+issue (`issue #N` or `#N`), the runner posts a comment on that issue containing the
+failure reason, exit code, runid, and the last 20 lines of the job log — the two places
+a dispatcher watches are the PR queue and the issue, so this closes the loop with no new
+infrastructure.  Commenting is strictly best-effort: a failure to post never changes the
+job outcome.  Ad-hoc jobs (no project) and prompts with no issue reference are silent.
+
+**Follow-ups not yet implemented:**
+- *Grafana alert* — a failed-job alert rule on the "Claude Runner Fleet" dashboard so
+  failures surface in the existing metrics view.
+- *cr-status ergonomics* — print the runid + a `cr-status <runid>` one-liner so
+  dispatchers can poll job state instead of inferring it from PR presence.
+
 ## Caveats (known, deliberate)
 
 - **At-least-once, not idempotent.** A worker that dies *after* opening a PR but before
